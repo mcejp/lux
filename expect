@@ -1,0 +1,20 @@
+#!/usr/bin/python3
+
+from pathlib import Path
+import subprocess
+import sys
+
+EXPECT = sys.argv[1]
+COMMAND = sys.argv[2:]
+
+if Path(EXPECT).is_file():
+    EXPECT = Path(EXPECT).read_bytes()
+else:
+    EXPECT = EXPECT.encode()
+
+GOT = subprocess.check_output(COMMAND)
+
+if GOT != EXPECT:
+    print("EXPECTED:", EXPECT)
+    print("GOT:     ", GOT)
+    sys.exit(1)
