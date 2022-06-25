@@ -1,0 +1,65 @@
+( algorithm per https://en.wikipedia.org/wiki/Division_algorithm#Integer_division_(unsigned)_with_remainder )
+
+  DUP2 ORA ,&nonzero JCN
+
+  ( divisor is zero )
+  POP2 POP2       ( drop D & N )
+  POP2r           ( drop return address )
+                  ( set error code (TODO) )
+  #00 DEI2 JMP2   ( jump to vector )
+
+  &nonzero
+
+  STH2   ( D stashed to RST )
+  STH2   ( N stashed to RST )
+
+  #0000 ,&Q STR2
+  #8000           ( bit that scans from MSB to LSB; doubles as loop counter )
+  #0000           ( Remainder )
+
+  ( 65+? bytes )
+  ( last run: 3259528 cyc )
+  ( stack usage: ?? )
+
+  ( opt ideas:
+    - implement a custom instruction
+    - keep Q on stack
+  )
+
+  &loop
+                          ( WST: bit ; R      RST: D ; N )
+    STH2r SWP2            ( bit ; N ; R )
+    #10 SFT2              ( bit ; N ; R<<1 )
+    OVR2 #0f SFT2         ( bit ; N ; R<<1 ; N>>15 ) ( peak stack usage here? )
+    ORA2                  ( bit ; N ; R<<1|N>>15 )
+    SWP2                  ( bit ; R_new ; N )
+
+    ( left-shift N & stash away )
+    #10 SFT2 STH2         ( bit ; R )
+
+    DUP2 OVR2r STH2r      ( bit ; R ; R ; D )
+    LTH2                  ( bit ; R ; R<D )
+    ,&skip JCN
+        ( set R = R-D and Q = Q|n )
+
+        OVR2r STH2r SUB2          ( bit ; R-D ) 
+        OVR2                      ( bit ; R_new; bit )
+        ,&Q LDR2 ORA2             ( bit ; R_new; Q|bit )
+        ,&Q STR2                  ( bit ; R_new )
+    &skip
+
+                          ( bit ; R_new )
+    SWP2 #01 SFT2         ( R_new ; bit >> 1 )
+    SWP2                  ( bit>>1 ; R_new )
+    OVR2 ORA              ( bit>>1 ; R_new ; bit_nonzero )
+  ,&loop JCN
+
+  POP2 POP2             ( drop R, bit )
+  POP2r                 ( drop N from RST )
+  POP2r                 ( drop D from RST )
+
+  ,&Q LDR2
+  JMP2r
+
+( @var1 )
+	&Q $2

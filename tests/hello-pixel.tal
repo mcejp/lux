@@ -1,0 +1,17 @@
+( hello-pixel.tal )
+
+( devices )
+|00 @System  [ &vector $2 &pad $6 &r $2 &g $2 &b $2 ]
+|20 @Screen  [ &vector $2 &width $2 &height $2 &pad $2 &x $2 &y $2 &addr $2 &pixel $1 &sprite $1 ]
+
+( main program )
+|0100
+      ( set system colors )
+      #2ce9 .System/r DEO2
+      #01c0 .System/g DEO2
+      #2ce5 .System/b DEO2
+
+      ( draw a pixel in the screen )
+      #0008 .Screen/x DEO2
+      #0008 .Screen/y DEO2
+      #41 .Screen/pixel DEO ( fg layer, color 1 )

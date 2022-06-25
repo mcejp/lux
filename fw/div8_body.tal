@@ -1,0 +1,10 @@
+            ( Dlow ; Nlow | )
+STH STH     (             | Nlow ; Dlow )
+#00 STHr    ( 00 Dlow     | Nlow )
+#00 STHr    ( D ; 00 Nlow | )
+DIV2        ( Qhi Qlow    | )
+NIP         ( Qlow        | )
+JMP2r
+
+( pad 5 bytes to 16 )
+BRK BRK BRK BRK BRK

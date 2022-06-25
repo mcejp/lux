@@ -1,0 +1,383 @@
+( Opcode Tester )
+
+( Requirements: 
+	EQU/EQU2 should put #00 or #01 on the stack
+	#18 DEO should output ascii character to console
+	#02 DEO should set location of working stack in memory
+	#03 DEO should set location of return stack in memory )
+
+%EMIT { #18 DEO }
+%TEST-SHORT { EQU2 #30 ADD EMIT }
+%TEST-BYTE { EQU #30 ADD EMIT }
+%MODE { #20 EMIT }
+%OPCODE { #0a EMIT }
+%TYPE { OPCODE OPCODE }
+%GET-ERR { #fe LDA }
+%WST { #ff }
+%RST { #fe }
+
+|00 @System &vector $2 &stacks &wst $1 &rst $1 &pad $4 &r $2 &g $2 &b $2
+
+|0000
+
+	@zeropage 
+		&byte $1 &short $2
+
+|0100
+
+	( set stacks location ) 
+	WST RST .System/stacks DEO2
+
+	( Logic )
+
+	( EQU )
+	#f8 #f8 EQU [ #01 ] TEST-BYTE
+	#01 #01 EQU [ #01 ] TEST-BYTE
+	#f8 #01 EQU [ #00 ] TEST-BYTE
+	#01 #f8 EQU [ #00 ] TEST-BYTE
+	MODE
+	#f801 #f801 EQU2 [ #01 ] TEST-BYTE
+	#01f8 #01f8 EQU2 [ #01 ] TEST-BYTE
+	#f801 #01f8 EQU2 [ #00 ] TEST-BYTE
+	#01f8 #f801 EQU2 [ #00 ] TEST-BYTE
+	OPCODE
+
+	( NEQ )
+	#f8 #f8 NEQ [ #00 ] TEST-BYTE
+	#01 #01 NEQ [ #00 ] TEST-BYTE
+	#f8 #01 NEQ [ #01 ] TEST-BYTE
+	#01 #f8 NEQ [ #01 ] TEST-BYTE
+	MODE
+	#f801 #f801 NEQ2 [ #00 ] TEST-BYTE
+	#01f8 #01f8 NEQ2 [ #00 ] TEST-BYTE
+	#f801 #01f8 NEQ2 [ #01 ] TEST-BYTE
+	#01f8 #f801 NEQ2 [ #01 ] TEST-BYTE
+	OPCODE
+
+	( GTH )
+	#f8 #f8 GTH [ #00 ] TEST-BYTE
+	#01 #01 GTH [ #00 ] TEST-BYTE
+	#f8 #01 GTH [ #01 ] TEST-BYTE
+	#01 #f8 GTH [ #00 ] TEST-BYTE
+	MODE
+	#f801 #f801 GTH2 [ #00 ] TEST-BYTE
+	#01f8 #01f8 GTH2 [ #00 ] TEST-BYTE
+	#f801 #01f8 GTH2 [ #01 ] TEST-BYTE
+	#01f8 #f801 GTH2 [ #00 ] TEST-BYTE
+	OPCODE
+
+	( LTH )
+	#f8 #f8 LTH [ #00 ] TEST-BYTE
+	#01 #01 LTH [ #00 ] TEST-BYTE
+	#f8 #01 LTH [ #00 ] TEST-BYTE
+	#01 #f8 LTH [ #01 ] TEST-BYTE
+	MODE
+	#f801 #f801 LTH2 [ #00 ] TEST-BYTE
+	#01f8 #01f8 LTH2 [ #00 ] TEST-BYTE
+	#f801 #01f8 LTH2 [ #00 ] TEST-BYTE
+	#01f8 #f801 LTH2 [ #01 ] TEST-BYTE
+	TYPE
+
+	( Arithmetic )
+
+	( ADD )
+	#ff #00 ADD [ #ff ] TEST-BYTE
+	#01 #ff ADD [ #00 ] TEST-BYTE
+	#ff #ff ADD [ #fe ] TEST-BYTE
+	#fe #ff ADD [ #fd ] TEST-BYTE
+	MODE
+	#ffff #0000 ADD2 [ #ffff ] TEST-SHORT
+	#0001 #ffff ADD2 [ #0000 ] TEST-SHORT
+	#ffff #ffff ADD2 [ #fffe ] TEST-SHORT
+	#fffe #ffff ADD2 [ #fffd ] TEST-SHORT
+	MODE
+	OPCODE
+
+	( SUB )
+	#ff #00 SUB [ #ff ] TEST-BYTE
+	#01 #ff SUB [ #02 ] TEST-BYTE
+	#ff #ff SUB [ #00 ] TEST-BYTE
+	#fe #ff SUB [ #ff ] TEST-BYTE
+	MODE
+	#ffff #0000 SUB2 [ #ffff ] TEST-SHORT
+	#0001 #ffff SUB2 [ #0002 ] TEST-SHORT
+	#ffff #ffff SUB2 [ #0000 ] TEST-SHORT
+	#fffe #ffff SUB2 [ #ffff ] TEST-SHORT
+	MODE
+	OPCODE
+
+	( MUL )
+	#00 #01 MUL [ #00 ] TEST-BYTE
+	#3f #e7 MUL [ #d9 ] TEST-BYTE
+	#37 #3f MUL [ #89 ] TEST-BYTE
+	#10 #02 MUL [ #20 ] TEST-BYTE
+	MODE
+	#1000 #0003 MUL2 [ #3000 ] TEST-SHORT
+	#abcd #1234 MUL2 [ #4fa4 ] TEST-SHORT
+	#8000 #0200 MUL2 [ #0000 ] TEST-SHORT
+	#2222 #0003 MUL2 [ #6666 ] TEST-SHORT
+	OPCODE
+
+	( DIV )
+	#10 #02 DIV [ #08 ] TEST-BYTE
+	#20 #20 DIV [ #01 ] TEST-BYTE
+	#34 #01 DIV [ #34 ] TEST-BYTE
+	#02 #ef DIV [ #00 ] TEST-BYTE
+	MODE
+	#1000 #0040 DIV2 [ #0040 ] TEST-SHORT
+	#abcd #1234 DIV2 [ #0009 ] TEST-SHORT
+	#8000 #0200 DIV2 [ #0040 ] TEST-SHORT
+	#2222 #0003 DIV2 [ #0b60 ] TEST-SHORT
+	TYPE
+
+	( Stack )
+
+	( INC )
+	#01 INC [ #02 ] TEST-BYTE
+	#ff INC [ #00 ] TEST-BYTE
+	#fe INC [ #ff ] TEST-BYTE
+	#00 INC [ #01 ] TEST-BYTE
+	MODE
+	#0001 INC2 [ #0002 ] TEST-SHORT
+	#ffff INC2 [ #0000 ] TEST-SHORT
+	#fffe INC2 [ #ffff ] TEST-SHORT
+	#0000 INC2 [ #0001 ] TEST-SHORT
+	OPCODE
+
+	( POP )
+	#0a #0b POP [ #0a ] TEST-BYTE
+	#0a #0b #0c POP POP [ #0a ] TEST-BYTE
+	#0a #0b #0c ADD POP [ #0a ] TEST-BYTE
+	#0a #0b #0c POP ADD [ #15 ] TEST-BYTE
+	MODE
+	#0a0b #0c0d POP2 [ #0a0b ] TEST-SHORT
+	#0a0b #0c0d #0e0f POP2 POP2 [ #0a0b ] TEST-SHORT
+	#0a0b #0c0d #0e0f ADD2 POP2 [ #0a0b ] TEST-SHORT
+	#0a0b #0c0d #0e0f POP2 ADD2 [ #1618 ] TEST-SHORT
+	OPCODE
+
+	( DUP )
+	#0a #0b DUP ADD ADD [ #20 ] TEST-BYTE
+	MODE
+	#0a0b DUP2 ADD2 [ #1416 ] TEST-SHORT
+	OPCODE
+
+	( NIP )
+	#12 #34 #56 NIP ADD [ #68 ] TEST-BYTE
+	MODE
+	#1234 #5678 #9abc NIP2 ADD2 [ #acf0 ] TEST-SHORT
+
+	OPCODE
+	( SWP )
+	#02 #10 SWP DIV [ #08 ] TEST-BYTE
+	MODE
+	#0a0b #0c0d SWP2 NIP2 [ #0a0b ] TEST-SHORT
+
+	OPCODE
+	( OVR )
+	#02 #10 OVR DIV ADD [ #0a ] TEST-BYTE
+	MODE
+	#0a0b #0c0d OVR2 NIP2 ADD2 [ #1416 ] TEST-SHORT
+	OPCODE
+
+	( ROT )
+	#02 #04 #10 ROT DIV ADD [ #0c ] TEST-BYTE
+	MODE
+	#0a0b #0c0d #0c0f ROT2 ADD2 NIP2 [ #161a ] TEST-SHORT
+	TYPE
+
+	( Bitwise )
+
+	( AND )
+	#fc #3f AND [ #3c ] TEST-BYTE
+	#f0 #0f AND [ #00 ] TEST-BYTE
+	#ff #3c AND [ #3c ] TEST-BYTE
+	#02 #03 AND [ #02 ] TEST-BYTE
+	MODE
+	#f0f0 #00f0 AND2 [ #00f0 ] TEST-SHORT
+	#aaaa #5555 AND2 [ #0000 ] TEST-SHORT
+	#ffff #1234 AND2 [ #1234 ] TEST-SHORT
+	#abcd #0a0c AND2 [ #0a0c ] TEST-SHORT
+	OPCODE
+
+	( ORA )
+	#0f #f0 ORA [ #ff ] TEST-BYTE
+	#ab #cd ORA [ #ef ] TEST-BYTE
+	#12 #34 ORA [ #36 ] TEST-BYTE
+	#88 #10 ORA [ #98 ] TEST-BYTE
+	MODE
+	#0f0f #f0f0 ORA2 [ #ffff ] TEST-SHORT
+	#abab #cdcd ORA2 [ #efef ] TEST-SHORT
+	#1122 #1234 ORA2 [ #1336 ] TEST-SHORT
+	#8888 #1000 ORA2 [ #9888 ] TEST-SHORT
+	OPCODE
+
+	( EOR )
+	#00 #00 EOR [ #00 ] TEST-BYTE
+	#ff #00 EOR [ #ff ] TEST-BYTE
+	#aa #55 EOR [ #ff ] TEST-BYTE
+	#ff #ff EOR [ #00 ] TEST-BYTE
+	MODE
+	#ffff #ff00 EOR2 [ #00ff ] TEST-SHORT
+	#aaaa #5555 EOR2 [ #ffff ] TEST-SHORT
+	#1122 #1234 EOR2 [ #0316 ] TEST-SHORT
+	#8888 #1000 EOR2 [ #9888 ] TEST-SHORT
+	OPCODE
+
+	( SFT )
+	#ff #08 SFT [ #00 ] TEST-BYTE
+	#ff #e0 SFT [ #00 ] TEST-BYTE
+	#ff #11 SFT [ #fe ] TEST-BYTE
+	#ff #12 SFT [ #7e ] TEST-BYTE
+	MODE
+	#ffff #01 SFT2 [ #7fff ] TEST-SHORT
+	#ffff #70 SFT2 [ #ff80 ] TEST-SHORT
+	#ffff #7e SFT2 [ #0180 ] TEST-SHORT
+	#ffff #e3 SFT2 [ #c000 ] TEST-SHORT
+	TYPE
+
+	( Memory )
+
+	( STZ/LDZ )
+	#ab .zeropage/byte STZ .zeropage/byte LDZ [ #ab ] TEST-BYTE
+	#cd .zeropage/byte STZ .zeropage/byte LDZ [ #cd ] TEST-BYTE
+	MODE
+	#1234 .zeropage/short STZ2 .zeropage/short LDZ2 [ #1234 ] TEST-SHORT
+	#5678 .zeropage/short STZ2 .zeropage/short LDZ2 [ #5678 ] TEST-SHORT
+	OPCODE
+
+	( STR/LDR )
+	[ LIT &before1 $1 ] POP
+	[ LIT2 &before2 $2 ] POP2
+	#22 ,&before1 STR ,&before1 LDR [ #22 ] TEST-BYTE
+	#ef ,&after1 STR ,&after1 LDR [ #ef ] TEST-BYTE
+	MODE
+	#1234 ,&before2 STR2 ,&before2 LDR2 [ #1234 ] TEST-SHORT
+	#5678 ,&after2 STR2 ,&after2 LDR2 [ #5678 ] TEST-SHORT
+	[ LIT &after1 $1 ] POP
+	[ LIT2 &after2 $2 ] POP2
+	OPCODE
+
+	( STA/LDA )
+	#34 ;absolute/byte STA ;absolute/byte LDA [ #34 ] TEST-BYTE
+	#56 ;absolute/byte STA ;absolute/byte LDA [ #56 ] TEST-BYTE
+	MODE
+	#1234 ;absolute/short STA2 ;absolute/short LDA2 [ #1234 ] TEST-SHORT
+	#5678 ;absolute/short STA2 ;absolute/short LDA2 [ #5678 ] TEST-SHORT
+	OPCODE
+
+	( DEI/DEO )
+	LIT '1 EMIT
+	LIT '1 EMIT
+	TYPE
+
+	( Branching )
+
+	( JMP )
+	#12 #34 ,&reljmp JMP SWP &reljmp POP [ #12 ] TEST-BYTE
+	MODE
+	#56 #78 ;&absjmp JMP2 SWP &absjmp POP [ #56 ] TEST-BYTE
+	OPCODE
+
+	( JCN )
+	#23 #01 ,&reljcn-y JCN INC &reljcn-y [ #23 ] TEST-BYTE
+	#23 #00 ,&reljcn-n JCN INC &reljcn-n [ #24 ] TEST-BYTE
+	MODE
+	#23 #01 ;&absjcn-y JCN2 INC &absjcn-y [ #23 ] TEST-BYTE
+	#23 #00 ;&absjcn-n JCN2 INC &absjcn-n [ #24 ] TEST-BYTE
+	OPCODE
+
+	( JSR - Requires return mode )
+	#12 #34 ;routine JSR2 [ #46 ] TEST-BYTE
+	OPCODE
+
+	( STH )
+	#0a STH #0b STH ADDr STHr [ #15 ] TEST-BYTE
+	MODE
+	#000a STH2 #000b STH2 ADD2r STH2r [ #0015 ] TEST-SHORT
+	TYPE
+
+	( Keep )
+	#12 #34 ADDk ADD ADD [ #8c ] TEST-BYTE
+	OPCODE
+
+	( Error: Division By Zero )
+	;on-error-division #00 DEO2
+	#10 #00 DIV
+
+	@err2
+	( Error: Working Stack Underflow )
+	;on-error-underflow #00 DEO2
+	POP
+
+	@err3
+	( Error: Return Stack Underflow )
+	;on-error-underflowr #00 DEO2
+	POPr
+
+	@end
+	#010e DEO
+	#010f DEO
+
+BRK
+
+@routine ( a b -- c )
+
+	ADD
+
+JMP2r
+
+@on-error-division ( -> )
+
+	WST ;print-err JSR2
+	;err2 JMP2
+
+BRK
+
+@on-error-underflow ( -> )
+
+	WST ;print-err JSR2
+	;err3 JMP2
+
+BRK
+
+@on-error-underflowr ( -> )
+
+	RST ;print-err JSR2
+	;end JMP2
+
+BRK
+
+@print-err ( page -- )
+
+	;err-txt ;print-str JSR2
+	;rst-txt ;print-str JSR2
+	#20 EMIT 
+	GET-ERR ;print/byte JSR2 
+	#0a EMIT
+
+JMP2r
+
+@print-str ( str* -- )
+
+	&while
+		LDAk #18 DEO
+		INC2 LDAk ,&while JCN
+	POP2
+
+JMP2r
+
+@print ( short* -- )
+
+	SWP ,&byte JSR
+	&byte ( byte -- ) DUP #04 SFT ,&char JSR
+	&char ( char -- ) #0f AND DUP #09 GTH #27 MUL ADD #30 ADD #18 DEO
+
+JMP2r
+
+@err-txt "Error $1
+@wst-txt "(wst) $1
+@rst-txt "(rst) $1
+
+@absolute 
+	&byte $1 &short $2

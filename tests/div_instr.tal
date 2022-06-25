@@ -1,0 +1,15 @@
+%EMIT { #18 DEO }
+%EMIT2 { SWP EMIT EMIT }
+
+|0100
+    #40 #06 DIV EMIT        ( expect 0a )
+    #c1 #02 DIV EMIT        ( expect 60 )
+    #c2 #02 DIV EMIT        ( expect 61 )
+
+    #0040 #0006 DIV2 EMIT2  ( expect 000a )
+    #0400 #0006 DIV2 EMIT2  ( expect 00aa )
+    #4000 #0006 DIV2 EMIT2  ( expect 0aaa )
+
+    #02 #10 OVR DIV ADD EMIT    ( expect 0a )
+
+    BRK

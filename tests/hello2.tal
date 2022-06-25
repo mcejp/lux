@@ -1,0 +1,7 @@
+( hello.tal )
+|0100 LIT 68 LIT 18 DEO ( h )
+      LIT 65 LIT 18 DEO ( e )
+      LIT 6c LIT 18 DEO ( l )
+      LIT 6c LIT 18 DEO ( l )
+      LIT 6f LIT 18 DEO ( o )
+      LIT 0a LIT 18 DEO ( newline )
