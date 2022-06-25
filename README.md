@@ -26,9 +26,16 @@ _aurora_sim_ assumes that `fw/fw.rom` had been built (it contains implementation
 Not yet implemented:
 - stack under/overflow traps
 - _k_ & _r_ variants of DIV/DIV2
+- error code on DIV/0 trap
 
 Implemented only as high-level model:
 - microcode sequencing
 - multiplication
+
+Unlikely to make it into Aurora:
+- hardware division
+- stack remapping to RAM
+
+Note that I/O Devices are outside the scope of this project. An address/data bus will be exposed to attach them, though.
 
 If you are interested in the microarchitecture nitty gritty, check this out as well: `make ucode_au20.html`
