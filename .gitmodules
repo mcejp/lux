@@ -1,0 +1,3 @@
+[submodule "uxn-instruction-tests"]
+	path = uxn-instruction-tests
+	url = https://github.com/DeltaF1/uxn-instruction-tests.git
