@@ -1,6 +1,6 @@
 This is the repository of the Lux CPU project.
 
-Currently it only implements one core, _Aurora-20_. Documentation is TBD.
+Currently it only implements one core, _Aurora-20_, which will serve as the basis of the LUX120A CPU. Documentation is TBD.
 
 After cloning the repository, you can execute
 
@@ -9,6 +9,8 @@ After cloning the repository, you can execute
 to run some tests. You will need `unxasm` and Python 3.9ish in your PATH.
 
 To recompile the ucode you will also need the `hy` package (precompiled ucode is provided for convenience).
+
+![datasheet](_img/datasheet.png)
 
 ## Details
 
@@ -38,4 +40,6 @@ Unlikely to make it into Aurora:
 
 Note that I/O Devices are outside the scope of this project. An address/data bus will be exposed to attach them, though.
 
-If you are interested in the microarchitecture nitty gritty, check this out as well: `make ucode_au20.html`
+If you are interested in the microarchitectural details, you can also generate a readable listing of the entire microcode: `make ucode_au20.html`
+
+![ucode](_img/ucode.png)
