@@ -1,3 +1,14 @@
+; Aurora-20 microcode
+;
+; 16-bit registers:             A, B, C, PC, (ALU -- registered unconditionally every clock cycle)
+;   a.k.a (explicit size):      AW, BW, CW, PC_W
+; Lower/upper byte:             A/B/CL, A/B/CH, ALU_L, ALU_H
+; Variable size:                AS, BS, CS, ALU_S
+;   (size is byte/word depending on S-mode of current instruction)
+;
+
+; Macros
+
 ; "SFT" -> "UI_ALU(ALU_OP_SFT)"
 (defmacro alu [op] `(+ "UI_ALU(ALU_OP_" ~op ")"))
 
@@ -17,6 +28,8 @@
     push-alu-l
 ))
 
+; Primitives
+
 (setv alu-pass-a                (uins :alu_op 'ALU_OP_PASS_OP0 :alu_sel0 'ALU_SEL0_A :alu_sel1 'ALU_SEL1_X))
 (setv dev-ld-at-a               (uins :mem_op 'MEM_LD_AT_A :mem_sp 'MEM_SP_DEV))
 (setv dev-st-bh-at-a            (uins :mem_op 'MEM_ST_BH_AT_A :mem_sp 'MEM_SP_DEV))
@@ -30,9 +43,10 @@
 (setv warp-alu-if-bl-nonzero    (uins :pc_op 'PC_WARP_ALU_IF_BL_NONZERO))
 (setv warp-dvec-s               (uins :pc_op 'PC_WARP_DVEC_S))
 
+; Opcodes
+
 ; alignment:
-; 2nd op @ col 25
-; comment @ col 41
+;  [1st op @ col 5      2nd op @ col 25]; comment @ col 41
 
 (make-alu ADD)
 (make-alu AND)
