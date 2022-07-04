@@ -25,6 +25,7 @@ ALU_OP_ORA = 12
 
 ALU_SEL0_X = -1         # don't care
 ALU_SEL0_A = 0          # register A
+ALU_SEL0_0 = 1          # constant 0, currently used only in trap handler
 
 ALU_SEL1_X = -1         # don't care
 ALU_SEL1_1 = 0          # constant 1
@@ -86,6 +87,8 @@ STK_SZ_S = 3
 
 @dataclass
 class AuroraUins:
+    last: bool = False
+
     alu_op: int = ALU_OP_X
     alu_sel0: int = ALU_SEL0_X
     alu_sel1: int = ALU_SEL1_X
@@ -136,6 +139,8 @@ class AuroraUins:
                 raise Exception(f"Combination not permitted: {left} | {right}")
 
         return AuroraUins(
+            last=select(self.last, other.last, neutral=False),
+
             alu_op=select(self.alu_op, other.alu_op, ALU_OP_X),
             alu_sel0=select(self.alu_sel0, other.alu_sel0, ALU_SEL0_X),
             alu_sel1=select(self.alu_sel1, other.alu_sel1, ALU_SEL1_X),
@@ -206,6 +211,9 @@ UI_ALU_A_PLUS_1 =  Ui(alu_op=ALU_OP_ADD, alu_sel0=ALU_SEL0_A, alu_sel1=ALU_SEL1_
 UI_ALU_PC_PLUS_A = Ui(alu_op=ALU_OP_ADD, alu_sel0=ALU_SEL0_A, alu_sel1=ALU_SEL1_PC)
 
 
+OP_ZZ_STKTRAP = -1
+
+
 # Replace ALU_OP_([A-Z0-9_]+) = .+
 # To ALU_OP_$1: "$1",
 alu_op_str = {
@@ -227,6 +235,7 @@ alu_op_str = {
 alu_sel0_str = {
     ALU_SEL0_X: "X",
     ALU_SEL0_A: "A",
+    ALU_SEL0_0: "0",
 }
 
 alu_sel1_str = {

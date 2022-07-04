@@ -2,10 +2,12 @@
 
 import copy
 import sys
+from typing import Optional
 
 from ucode_au20 import *
 
 LOUD = 0
+# LOUD = 1
 
 g_cycle_number = 0
 
@@ -79,9 +81,12 @@ class MemControl(Module):
         # assuming no unsolicited responses, of course
         return ram_valid_i if self._busy_ram else dev_valid_i
 
-    def update(self, next, mem_op, pc, reg_a, reg_b, ram_valid_i, ram_data_i, dev_valid_i, dev_data_i):
+    def update(self, next, mem_op, pc, reg_a, reg_b, ram_valid_i, ram_data_i, dev_valid_i, dev_data_i, hint_fetching_code):
         if ram_valid_i:
-            T(f"-- fetched RAM {ram_data_i:02X}h")
+            if hint_fetching_code:
+                T(f"-- fetched RAM opcode {ram_data_i:02X}h {opcode_to_mnemonic(ram_data_i)}")
+            else:
+                T(f"-- fetched RAM data {ram_data_i:02X}h")
             assert self._busy_ram
 
         if dev_valid_i:
@@ -136,7 +141,7 @@ class Sequencer(Module):
     def init(self):
         return dict(pc=0x100,
                     executing_pc=None,
-                    uprog=[],       # TODO: not hw-realistic
+                    ucode_addr=len(UCODE_ROM),
                     r_mode=False,
                     s_mode=False,
                     k_mode=False,
@@ -145,7 +150,13 @@ class Sequencer(Module):
                     dvec=0xff80,
                     )
 
-    def update(self, next, mem_ready, alu_res, reg_b, mem_valid_i, ram_data_i):
+    def current_uins(self) -> Optional[AuroraUins]:
+        if self.ucode_addr < len(UCODE_ROM):
+            return UCODE_ROM[self.ucode_addr]
+        else:
+            return None
+
+    def update(self, next, mem_ready, alu_res, reg_b, mem_valid_i, ram_data_i, stk_trap_i):
         """
         Fetcher logic:
         - if fetch in progress:
@@ -158,7 +169,7 @@ class Sequencer(Module):
             - if ucode ran out, begin fetch + increment PC
         """
 
-        is_out_of_uprog = (self.uprog == [])
+        is_out_of_uprog = (self.ucode_addr == len(UCODE_ROM))
 
         if self.fetching_code:
             if mem_valid_i:
@@ -170,9 +181,11 @@ class Sequencer(Module):
                     sys.exit()
 
                 try:
-                    next.uprog = UCODE[opcode & ~(OMODE_R | OMODE_k)]
+                    start, length = UCODE_LUT[opcode & ~(OMODE_R | OMODE_k)]
                 except KeyError:
                     raise Exception(f"unimplemented {opcode:02X}h") from None
+
+                next.ucode_addr = start
 
                 next.r_mode = (opcode & OMODE_R) != 0
                 next.s_mode = (opcode & OMODE_S) != 0
@@ -185,16 +198,26 @@ class Sequencer(Module):
 
             pc_op = PC_NOP
 
+        # ucode_addr automaton
         if not is_out_of_uprog:
-            pc_op = self.uprog[0].pc_op
+            uins = UCODE_ROM[self.ucode_addr]
+
+            pc_op = uins.pc_op
 
             # advance to next uins, unless stalled
-            mem_stall = (self.uprog[0].reg_in_sel == REG_IN_MEM and not mem_valid_i)
+            mem_stall = (uins.reg_in_sel == REG_IN_MEM and not mem_valid_i)
 
-            if mem_stall:
+            if stk_trap_i:
+                # TODO: save stack id & error number
+
+                next.ucode_addr = UCODE_LUT[OP_ZZ_STKTRAP][0]
+            elif mem_stall:
                 T("-- memory stall")
             else:
-                next.uprog = self.uprog[1:]
+                if uins.last:
+                    next.ucode_addr = len(UCODE_ROM)
+                else:
+                    next.ucode_addr = self.ucode_addr + 1
             T("-- uexec", uins)
 
         if is_out_of_uprog and mem_ready:
@@ -223,7 +246,7 @@ class Sequencer(Module):
 
             next.pc = self.dvec | (16 if self.s_mode else 0)
             # next.uprog = []
-            assert len(self.uprog) == 1
+            assert uins.last
         else:
             assert pc_op == PC_NOP
 
@@ -283,10 +306,11 @@ class Alu(Module):
         return dict(res=0xBAAD)
 
     def update(self, next, alu_op, alu_sel0, alu_sel1, reg_a, reg_b, pc):
-        if alu_sel0 == ALU_SEL0_A:
-            op0 = reg_a
-        else:
-            op0 = 0xD00DB00B
+        op0 = {
+            ALU_SEL0_A: reg_a,
+            ALU_SEL0_0: 0,
+            ALU_SEL0_X: None,
+        }[alu_sel0]
 
         if alu_sel1 == ALU_SEL1_1:
             op1 = 1
@@ -346,6 +370,23 @@ class Stack(Module):
         else:
             return ((self.values[self.rpos - 2] << 8) | self.values[self.rpos - 1]) if self.rpos >= 2 else None
 
+    # does this uop cause a trap (over/underflow)?
+    def trap_req_o(self, op, sz, s) -> bool:
+        eff_sz = {      # FIXME DRY
+            STK_SZ_X: None,
+            STK_SZ_S: 2 if s else 1,
+            STK_SZ_16: 2,
+            STK_SZ_8L: 1,
+            STK_SZ_8H: 1,
+        }[sz]
+
+        if op == STK_PUSH:
+            return (self.wpos + eff_sz >= len(self.values))
+        elif op == STK_POP:
+            return (self.rpos - eff_sz < 0)
+        else:
+            return False
+
     def update(self, next, instr_start, op, in_sel, sz, s, k, alu_res, reg_a, reg_b, reg_c, pc):
         """
         K-mode logic:
@@ -379,7 +420,7 @@ class Stack(Module):
                 STK_SZ_8H: data_i >> 16,
             }[sz]
 
-        eff_sz = {
+        eff_sz = {      # FIXME DRY
             STK_SZ_X: None,
             STK_SZ_S: 2 if s else 1,
             STK_SZ_16: 2,
@@ -387,36 +428,36 @@ class Stack(Module):
             STK_SZ_8H: 1,
         }[sz]
 
-        if op == STK_PUSH:
+        if op == STK_PUSH and self.wpos + eff_sz < len(self.values):
             if eff_sz == 1:
                 T(f"PUSH {self._name}[{self.wpos}] <= {data_i & 0xff:02X}h")
-                assert next.wpos + 1 < len(self.values)
+                # assert self.wpos + 1 < len(self.values)
 
                 next.values[self.wpos] = data_i & 0xff
                 next.wpos = self.wpos + 1
             else:
                 T(f"PUSH {self._name}[{self.wpos}:{self.wpos+1}] <= {data_i:04X}h")
-                assert next.wpos + 2 < len(self.values)
+                # assert self.wpos + 2 < len(self.values)
 
                 next.values[self.wpos] = (data_i >> 8)
                 next.values[self.wpos + 1] = (data_i & 0xff)
                 next.wpos = self.wpos + 2
-        elif op == STK_POP:
+        elif op == STK_POP and self.rpos - eff_sz >= 0:
             if eff_sz == 1:
                 T(f"POP {self._name} => {self.top(sz, s):02X}h")
 
-                assert next.rpos - 1 >= 0
+                # assert self.rpos - 1 >= 0
                 next.rpos = self.rpos - 1
             else:
                 T(f"POP {self._name} => {self.top(sz, s):04X}h")
 
-                assert next.rpos - 2 >= 0
+                # assert self.rpos - 2 >= 0
                 next.rpos = self.rpos - 2
 
             if not k:
                 next.wpos = next.rpos
         else:
-            assert op == STK_NOP
+            assert op in {STK_NOP, STK_POP, STK_PUSH}
 
         if instr_start:
             # re-synchronize pointers if previous instruction was keep-mode
@@ -424,7 +465,8 @@ class Stack(Module):
 
 
 class Ram(Module):
-    def __init__(self, size):
+    def __init__(self, name, size):
+        self.__dict__["_name"] = name
         self.__dict__["_size"] = size
         super().__init__()
 
@@ -449,7 +491,7 @@ class Ram(Module):
     def update(self, next, valid_i, wr, addr, data_i):
         # 1-cycle write
         if valid_i and wr:
-            T(f"mem[{addr:04X}h] <= {data_i:02X}h")
+            T(f"{self._name}[{addr:04X}h] <= {data_i:02X}h")
             #next.mem_array[addr] = data_i  too slow
             self._patches.append((addr, data_i))
 
@@ -464,8 +506,8 @@ reg = RegFile()
 alu = Alu()
 stk = Stack("wst")
 rst = Stack("rst")
-ram = Ram(0x10000)
-dev = Ram(0x100)
+ram = Ram("ram", 0x10000)
+dev = Ram("dev", 0x100)
 
 
 args = sys.argv[1:]
@@ -486,7 +528,9 @@ MAXCYC = 4_000_000      # div16_gen.rom currently the longest
 for i in range(MAXCYC):
     g_cycle_number = i
 
-    if seq.uprog == []:
+    uins = seq.current_uins()
+
+    if uins is None:
         if not seq.fetching_code:
             mem_op = MEM_LD_AT_PC       # this is what currently triggers opcode fetch
         else:
@@ -506,8 +550,6 @@ for i in range(MAXCYC):
         s = 0
         k = 0
     else:
-        uins = seq.uprog[0]
-
         reg_al_wr = uins.reg_al_wr; reg_ah_wr = uins.reg_ah_wr
         reg_bl_wr = uins.reg_bl_wr; reg_bh_wr = uins.reg_bh_wr
         reg_cl_wr = uins.reg_cl_wr; reg_ch_wr = uins.reg_ch_wr
@@ -544,12 +586,15 @@ for i in range(MAXCYC):
                 ram_data_i=ram.data_o,
                 dev_valid_i=dev.valid_o,
                 dev_data_i=dev.data_o,
+
+                hint_fetching_code=seq.fetching_code,
                 )
     seq.execute(mem_ready=mem.ready(),
                 alu_res=alu.res,
                 reg_b=reg.b,
                 mem_valid_i=mem.resp_valid(ram_valid_i=ram.valid_o, dev_valid_i=dev.valid_o),
-                ram_data_i=ram.data_o)
+                ram_data_i=ram.data_o,
+                stk_trap_i=stk.trap_req_o(op=wst_op, sz=wst_sz, s=s) or rst.trap_req_o(op=rst_op, sz=rst_sz, s=s))
     reg.execute(al_wr=reg_al_wr, ah_wr=reg_ah_wr,
                 bl_wr=reg_bl_wr, bh_wr=reg_bh_wr,
                 cl_wr=reg_cl_wr, ch_wr=reg_ch_wr,
@@ -560,9 +605,10 @@ for i in range(MAXCYC):
                 wst_top=stk.top(sz=wst_sz, s=s),
                 rst_top=rst.top(sz=rst_sz, s=s))
     alu.execute(alu_op=alu_op, alu_sel0=alu_sel0, alu_sel1=alu_sel1, reg_a=reg.a, reg_b=reg.b, pc=seq.pc)
-    stk.execute(instr_start=not seq.uprog, op=wst_op, in_sel=wst_in_sel, sz=wst_sz, s=s, k=k, alu_res=alu.res,
+    # TODO: instr_start logic
+    stk.execute(instr_start=uins is None, op=wst_op, in_sel=wst_in_sel, sz=wst_sz, s=s, k=k, alu_res=alu.res,
                 reg_a=reg.a, reg_b=reg.b, reg_c=reg.c, pc=seq.pc)
-    rst.execute(instr_start=not seq.uprog, op=rst_op, in_sel=rst_in_sel, sz=rst_sz, s=s, k=k, alu_res=alu.res,
+    rst.execute(instr_start=uins is None, op=rst_op, in_sel=rst_in_sel, sz=rst_sz, s=s, k=k, alu_res=alu.res,
                 reg_a=reg.a, reg_b=reg.b, reg_c=reg.c, pc=seq.pc)
     ram.execute(valid_i=mem.ram_valid_o,
                 wr=mem.wr_o,

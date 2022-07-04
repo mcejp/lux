@@ -1,23 +1,23 @@
 #!/usr/bin/env python3
 
 from aurora import *
-from ucode_au20 import UCODE
+from ucode_au20 import UCODE_LUT, UCODE_ROM
 
-from uxn_isa import opcode_to_str, OMODE_S
+from uxn_isa import opcode_to_mnemonic, OMODE_S
 
 rows = []
 
-for opcode, uprog in sorted(UCODE.items()):
+for opcode, (start, length) in sorted(UCODE_LUT.items()):
+    uprog = UCODE_ROM[start:start + length]
+
     if (opcode & 0x9f) == 0x00:
+        # where BRK would be in the LUT, we have LIT (FIXME?)
         opcode ^= 0x80
 
-        # LIT
-        mnemonic = opcode_to_str[(opcode & 0x1f) | 0x80]
+    if opcode == OP_ZZ_STKTRAP:
+        mnemonic = ".STKTRAP"
     else:
-        mnemonic = opcode_to_str[opcode & 0x1f]
-
-    if (opcode & OMODE_S) != 0:
-        mnemonic += "2"
+        mnemonic = opcode_to_mnemonic(opcode)
 
     heading = [f"{opcode:02X}h&ensp;{mnemonic}", "ALU", "Mem", "PC", "Reg", "Work stack", "Ret stack", "Stall"]
     rows.append(heading)
@@ -115,7 +115,7 @@ with open("ucode_au20.html", "wt") as f:
             "th { border-top: 2px solid #ccc; font-size: 12pt;  } "
             "th:not(:first-child) { color: #999 }</style>\n")
     f.write("<h2>Aurora-20 microcode listing</h2>\n")
-    f.write('<table cellspacing="0">')
+    f.write('<table cellspacing="0">\n')
     for row in rows:
         f.write("<tr>")
         for cell in row:

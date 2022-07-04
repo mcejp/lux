@@ -30,7 +30,9 @@
 
 ; Primitives
 
+(setv alu-0                     (uins :alu_op 'ALU_OP_PASS_OP0 :alu_sel0 'ALU_SEL0_0 :alu_sel1 'ALU_SEL1_X))
 (setv alu-pass-a                (uins :alu_op 'ALU_OP_PASS_OP0 :alu_sel0 'ALU_SEL0_A :alu_sel1 'ALU_SEL1_X))
+(setv alu-pass-b                (uins :alu_op 'ALU_OP_ADD :alu_sel0 'ALU_SEL0_0 :alu_sel1 'ALU_SEL1_B))
 (setv dev-ld-at-a               (uins :mem_op 'MEM_LD_AT_A :mem_sp 'MEM_SP_DEV))
 (setv dev-st-bh-at-a            (uins :mem_op 'MEM_ST_BH_AT_A :mem_sp 'MEM_SP_DEV))
 (setv dev-st-bl-at-a            (uins :mem_op 'MEM_ST_BL_AT_A :mem_sp 'MEM_SP_DEV))
@@ -206,7 +208,7 @@
     push-bs
 )
 
-(opcode 'LIT
+(opcode 'LIT :opcode-expr '(& OP_LIT 0x1f)
     ; TODO: worth bypassing Regfile for loads?
     ;       (would need to propagate stall flag to stacks)
    [ram-ld-at-pc        pc-incr]
@@ -214,7 +216,7 @@
     push-as
 )
 
-(opcode 'LIT2
+(opcode 'LIT2 :opcode-expr '(| (& OP_LIT 0x1f) OMODE_S)
    [ram-ld-at-pc        pc-incr]
     mem-to-ah
     ; TODO: would be nice to start the 2nd load on the last cycle of 1st
@@ -317,4 +319,26 @@
     pop-bs
     push-as
     push-bs
+)
+
+(opcode 'ZZ_STKTRAP
+    ; stack trap: load short [dev:0] and jump to it
+    ; not very efficient but speed does not matter
+
+    ; FIXME: error code not being set
+
+    ; zero-out AW
+    alu-0
+    alu-to-a
+
+    ; DEI2 to BW
+    dev-ld-at-a
+   [mem-to-bh           alu-a-plus-1]
+    alu-to-a
+    dev-ld-at-a
+    mem-to-bl
+
+    ; jump to BW
+    alu-pass-b
+    warp-alu
 )

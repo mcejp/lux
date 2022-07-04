@@ -37,7 +37,7 @@ OP_SFT = 0x1F
 OP_LIT = 0x80
 
 
-opcode_to_str = {
+_opcode_to_str = {
     OP_BRK: "BRK",
     OP_INC: "INC",
     OP_POP: "POP",
@@ -72,3 +72,22 @@ opcode_to_str = {
     OP_SFT: "SFT",
     OP_LIT: "LIT",
 }
+
+def opcode_to_mnemonic(opcode):
+    # LIT is special in that it has a mask of 0x9f + 2 flags
+    # (other instructions are 0x1f + 3 flags)
+    if (opcode & 0x9f) == OP_LIT:
+        mnemonic = _opcode_to_str[opcode & 0x9f]
+    else:
+        mnemonic = _opcode_to_str[opcode & 0x1f]
+    
+    if opcode & OMODE_S:
+        mnemonic += "2"
+
+    if (opcode & OMODE_k) and (opcode & 0x9f) != OP_LIT:
+        mnemonic += "k"
+
+    if opcode & OMODE_R:
+        mnemonic += "r"
+
+    return mnemonic
