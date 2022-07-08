@@ -1,7 +1,7 @@
 all: all_runtime ucode_au20.html
 all_runtime: fw/fw.rom ucode_au20_gen.py
 
-fw/fw.rom: fw/fw.tal fw/div8_body.tal fw/div16_body.tal
+fw/fw.rom: fw/fw.tal fw/div16_body.tal
 	cd fw ; uxnasm $(notdir $<) $(notdir $@)
 
 ucode_au20_gen.py: ucode_au20.hy ucodecompiler2.py

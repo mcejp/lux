@@ -147,7 +147,7 @@ class Sequencer(Module):
                     k_mode=False,
                     fetching_code=False,
                     # tvec=0x0100,
-                    dvec=0xff80,
+                    uvec=0xff80,
                     )
 
     def current_uins(self) -> Optional[AuroraUins]:
@@ -180,8 +180,13 @@ class Sequencer(Module):
                     print()
                     sys.exit()
 
+                if opcode in {OP_DIV, OP_DIV|OMODE_S}:
+                    lut_key = OP_ZZ_UNIMPL
+                else:
+                    lut_key = opcode & ~(OMODE_R | OMODE_k)
+
                 try:
-                    start, length = UCODE_LUT[opcode & ~(OMODE_R | OMODE_k)]
+                    start, length = UCODE_LUT[lut_key]
                 except KeyError:
                     raise Exception(f"unimplemented {opcode:02X}h") from None
 
@@ -241,10 +246,10 @@ class Sequencer(Module):
 
             if (reg_b & 0x00ff) != 0:
                 next.pc = alu_res
-        elif pc_op == PC_WARP_DVEC_S:
-            T("JUMP to DVEC.s")
+        elif pc_op == PC_WARP_UVEC:
+            T("JUMP to UVEC")
 
-            next.pc = self.dvec | (16 if self.s_mode else 0)
+            next.pc = self.uvec
             # next.uprog = []
             assert uins.last
         else:
@@ -354,8 +359,8 @@ class Stack(Module):
     def init(self):
         return dict(values=[None] * 254, rpos=0, wpos=0)
 
-    def top(self, sz, s):
-        if sz == -1:
+    def top(self, en, sz, s):
+        if not en or sz == -1:
             return None
 
         eff_sz = {
@@ -371,7 +376,10 @@ class Stack(Module):
             return ((self.values[self.rpos - 2] << 8) | self.values[self.rpos - 1]) if self.rpos >= 2 else None
 
     # does this uop cause a trap (over/underflow)?
-    def trap_req_o(self, op, sz, s) -> bool:
+    def trap_req_o(self, en, op, sz, s) -> bool:
+        if not en:
+            return False
+
         eff_sz = {      # FIXME DRY
             STK_SZ_X: None,
             STK_SZ_S: 2 if s else 1,
@@ -387,7 +395,7 @@ class Stack(Module):
         else:
             return False
 
-    def update(self, next, instr_start, op, in_sel, sz, s, k, alu_res, reg_a, reg_b, reg_c, pc):
+    def update(self, next, instr_start, en, op, in_sel, sz, s, k, alu_res, reg_a, reg_b, reg_c, pc):
         """
         K-mode logic:
           if not k:
@@ -428,7 +436,7 @@ class Stack(Module):
             STK_SZ_8H: 1,
         }[sz]
 
-        if op == STK_PUSH and self.wpos + eff_sz < len(self.values):
+        if en and op == STK_PUSH and self.wpos + eff_sz < len(self.values):
             if eff_sz == 1:
                 T(f"PUSH {self._name}[{self.wpos}] <= {data_i & 0xff:02X}h")
                 # assert self.wpos + 1 < len(self.values)
@@ -442,21 +450,21 @@ class Stack(Module):
                 next.values[self.wpos] = (data_i >> 8)
                 next.values[self.wpos + 1] = (data_i & 0xff)
                 next.wpos = self.wpos + 2
-        elif op == STK_POP and self.rpos - eff_sz >= 0:
+        elif en and op == STK_POP and self.rpos - eff_sz >= 0:
             if eff_sz == 1:
-                T(f"POP {self._name} => {self.top(sz, s):02X}h")
+                T(f"POP {self._name} => {self.top(en, sz, s):02X}h")
 
                 # assert self.rpos - 1 >= 0
                 next.rpos = self.rpos - 1
             else:
-                T(f"POP {self._name} => {self.top(sz, s):04X}h")
+                T(f"POP {self._name} => {self.top(en, sz, s):04X}h")
 
                 # assert self.rpos - 2 >= 0
                 next.rpos = self.rpos - 2
 
             if not k:
                 next.wpos = next.rpos
-        else:
+        elif en:
             assert op in {STK_NOP, STK_POP, STK_PUSH}
 
         if instr_start:
@@ -544,11 +552,13 @@ for i in range(MAXCYC):
         alu_op = ALU_OP_X
         alu_sel0 = ALU_SEL0_X
         alu_sel1 = ALU_SEL1_X
-        wst_op = STK_NOP; wst_in_sel = STK_IN_X; wst_sz = STK_SZ_X
-        rst_op = STK_NOP; rst_in_sel = STK_IN_X; rst_sz = STK_SZ_X
+        stk_op = STK_NOP; stk_in_sel = STK_IN_X; stk_sz = STK_SZ_X
         mem_sp = MEM_SP_RAM           # needed to fetch code
         s = 0
         k = 0
+        # micro-architecturally always one stack will have en=1 and other en=0
+        wst_en = True
+        rst_en = False
     else:
         reg_al_wr = uins.reg_al_wr; reg_ah_wr = uins.reg_ah_wr
         reg_bl_wr = uins.reg_bl_wr; reg_bh_wr = uins.reg_bh_wr
@@ -558,14 +568,7 @@ for i in range(MAXCYC):
         alu_op = uins.alu_op
         alu_sel0 = uins.alu_sel0
         alu_sel1 = uins.alu_sel1
-
-        if not seq.r_mode:
-            wst_op = uins.wst_op; wst_in_sel = uins.wst_in_sel; wst_sz = uins.wst_sz
-            rst_op = uins.rst_op; rst_in_sel = uins.rst_in_sel; rst_sz = uins.rst_sz
-        else:
-            rst_op = uins.wst_op; rst_in_sel = uins.wst_in_sel; rst_sz = uins.wst_sz
-            wst_op = uins.rst_op; wst_in_sel = uins.rst_in_sel; wst_sz = uins.rst_sz
-
+        stk_op = uins.stk_op; stk_in_sel = uins.stk_in_sel; stk_sz = uins.stk_sz
         mem_op = uins.mem_op
         mem_sp = uins.mem_sp
 
@@ -577,6 +580,8 @@ for i in range(MAXCYC):
 
         s = seq.s_mode
         k = seq.k_mode
+        wst_en = (uins.stk_sel != STK_RST) ^ seq.r_mode
+        rst_en = not wst_en
 
     mem.execute(mem_op=mem_op,
                 pc=seq.pc,
@@ -594,7 +599,7 @@ for i in range(MAXCYC):
                 reg_b=reg.b,
                 mem_valid_i=mem.resp_valid(ram_valid_i=ram.valid_o, dev_valid_i=dev.valid_o),
                 ram_data_i=ram.data_o,
-                stk_trap_i=stk.trap_req_o(op=wst_op, sz=wst_sz, s=s) or rst.trap_req_o(op=rst_op, sz=rst_sz, s=s))
+                stk_trap_i=stk.trap_req_o(en=wst_en, op=stk_op, sz=stk_sz, s=s) or rst.trap_req_o(en=rst_en, op=stk_op, sz=stk_sz, s=s))
     reg.execute(al_wr=reg_al_wr, ah_wr=reg_ah_wr,
                 bl_wr=reg_bl_wr, bh_wr=reg_bh_wr,
                 cl_wr=reg_cl_wr, ch_wr=reg_ch_wr,
@@ -602,13 +607,13 @@ for i in range(MAXCYC):
                 h_mode=reg_h_mode,
                 alu_res=alu.res,
                 mem_rdata=mem.rdata(ram_rdata=ram.data_o, dev_rdata=dev.data_o),
-                wst_top=stk.top(sz=wst_sz, s=s),
-                rst_top=rst.top(sz=rst_sz, s=s))
+                wst_top=stk.top(en=wst_en, sz=stk_sz, s=s),
+                rst_top=rst.top(en=rst_en, sz=stk_sz, s=s))
     alu.execute(alu_op=alu_op, alu_sel0=alu_sel0, alu_sel1=alu_sel1, reg_a=reg.a, reg_b=reg.b, pc=seq.pc)
     # TODO: instr_start logic
-    stk.execute(instr_start=uins is None, op=wst_op, in_sel=wst_in_sel, sz=wst_sz, s=s, k=k, alu_res=alu.res,
+    stk.execute(instr_start=uins is None, en=wst_en, op=stk_op, in_sel=stk_in_sel, sz=stk_sz, s=s, k=k, alu_res=alu.res,
                 reg_a=reg.a, reg_b=reg.b, reg_c=reg.c, pc=seq.pc)
-    rst.execute(instr_start=uins is None, op=rst_op, in_sel=rst_in_sel, sz=rst_sz, s=s, k=k, alu_res=alu.res,
+    rst.execute(instr_start=uins is None, en=rst_en, op=stk_op, in_sel=stk_in_sel, sz=stk_sz, s=s, k=k, alu_res=alu.res,
                 reg_a=reg.a, reg_b=reg.b, reg_c=reg.c, pc=seq.pc)
     ram.execute(valid_i=mem.ram_valid_o,
                 wr=mem.wr_o,

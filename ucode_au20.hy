@@ -43,7 +43,7 @@
 (setv ram-st-bl-at-a            (uins :mem_op 'MEM_ST_BL_AT_A :mem_sp 'MEM_SP_RAM))
 (setv warp-alu                  (uins :pc_op 'PC_WARP_ALU))
 (setv warp-alu-if-bl-nonzero    (uins :pc_op 'PC_WARP_ALU_IF_BL_NONZERO))
-(setv warp-dvec-s               (uins :pc_op 'PC_WARP_DVEC_S))
+(setv warp-uvec                 (uins :pc_op 'PC_WARP_UVEC))
 
 ; Opcodes
 
@@ -85,10 +85,7 @@
     push-bs
 )
 
-(opcode 'DIV :s-mode 'auto
-    rpush-pc-w
-    warp-dvec-s
-)
+; TODO: map DIV* to UNIMPL ("alias" directive?)
 
 (opcode 'DUP :s-mode 'auto
     pop-as
@@ -341,4 +338,9 @@
     ; jump to BW
     alu-pass-b
     warp-alu
+)
+
+(opcode 'ZZ_UNIMPL
+    rpush-pc-w
+    warp-uvec
 )

@@ -64,11 +64,15 @@ PC_NOP = 0
 PC_INCR = 1
 PC_WARP_ALU = 2
 PC_WARP_ALU_IF_BL_NONZERO = 3
-PC_WARP_DVEC_S = 4
+PC_WARP_UVEC = 4        # TODO: eliminate & micro-code
 
 STK_NOP = 0
 STK_PUSH = 1
 STK_POP = 2
+
+STK_NEITHER = -1
+STK_WST = 0
+STK_RST = 1
 
 # could reduce footprint further by merging Stk mux of A/B/C with someone else's mux of A/B/C (if there is such one)
 STK_IN_X = -1
@@ -112,16 +116,11 @@ class AuroraUins:
     reg_h_mode: int = REG_H_X
     # Note: could separate A/B/C selection from H/L write enable to save 1 bit
 
-    # working stack (WST)
-    wst_op: int = STK_NOP
-    wst_in_sel: int = STK_IN_X
-    wst_sz: int = STK_SZ_X
-
-    # return stack (RST);
-    # TODO: merge with WST & add 1-bit Stack Select
-    rst_op: int = STK_NOP
-    rst_in_sel: int = STK_IN_X
-    rst_sz: int = STK_SZ_X
+    # stacks (WST & RST)
+    stk_sel: int = STK_NEITHER
+    stk_op: int = STK_NOP
+    stk_in_sel: int = STK_IN_X
+    stk_sz: int = STK_SZ_X
 
     # memory
     mem_op: int = MEM_NOP
@@ -157,13 +156,10 @@ class AuroraUins:
             reg_in_sel=select(self.reg_in_sel, other.reg_in_sel, REG_IN_X),
             reg_h_mode=select(self.reg_h_mode, other.reg_h_mode, REG_H_X),
 
-            wst_op=select(self.wst_op, other.wst_op, STK_NOP),
-            wst_in_sel=select(self.wst_in_sel, other.wst_in_sel, STK_IN_X),
-            wst_sz=select(self.wst_sz, other.wst_sz, STK_SZ_X),
-
-            rst_op=select(self.rst_op, other.rst_op, STK_NOP),
-            rst_in_sel=select(self.rst_in_sel, other.rst_in_sel, STK_IN_X),
-            rst_sz=select(self.rst_sz, other.rst_sz, STK_SZ_X),
+            stk_sel=select(self.stk_sel, other.stk_sel, STK_NEITHER),
+            stk_op=select(self.stk_op, other.stk_op, STK_NOP),
+            stk_in_sel=select(self.stk_in_sel, other.stk_in_sel, STK_IN_X),
+            stk_sz=select(self.stk_sz, other.stk_sz, STK_SZ_X),
 
             mem_op=select(self.mem_op, other.mem_op, MEM_NOP),
             mem_sp=select(self.mem_sp, other.mem_sp, MEM_SP_X),
@@ -184,26 +180,26 @@ UI_MEM_TO_BH =  Ui(reg_bh_wr=True, reg_in_sel=REG_IN_MEM, reg_h_mode=REG_H_MIRRO
 
 # note: UI_MEM_TO_BL is always (?) followed by PUSH_BL, might be worth optimizing
 
-UI_POP_S =        Ui(wst_op=STK_POP, wst_sz=STK_SZ_S)
-UI_POP_A_S8 =   Ui(wst_op=STK_POP, wst_sz=STK_SZ_8L, reg_al_wr=True, reg_ah_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_SIGN)
-UI_POP_A_U8 =   Ui(wst_op=STK_POP, wst_sz=STK_SZ_8L, reg_al_wr=True, reg_ah_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_ZERO)
-UI_POP_AW =     Ui(wst_op=STK_POP, wst_sz=STK_SZ_16, reg_al_wr=True, reg_ah_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_H)
-UI_POP_AS =     Ui(wst_op=STK_POP, wst_sz=STK_SZ_S, reg_al_wr=True, reg_ah_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_H)
-UI_POP_B_U8 =   Ui(wst_op=STK_POP, wst_sz=STK_SZ_8L, reg_bl_wr=True, reg_bh_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_ZERO)
-UI_POP_BS =     Ui(wst_op=STK_POP, wst_sz=STK_SZ_S, reg_bl_wr=True, reg_bh_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_H)
-UI_POP_CS =     Ui(wst_op=STK_POP, wst_sz=STK_SZ_S, reg_cl_wr=True, reg_ch_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_H)
+UI_POP_S =      Ui(stk_sel=STK_WST, stk_op=STK_POP, stk_sz=STK_SZ_S)
+UI_POP_A_S8 =   Ui(stk_sel=STK_WST, stk_op=STK_POP, stk_sz=STK_SZ_8L, reg_al_wr=True, reg_ah_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_SIGN)
+UI_POP_A_U8 =   Ui(stk_sel=STK_WST, stk_op=STK_POP, stk_sz=STK_SZ_8L, reg_al_wr=True, reg_ah_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_ZERO)
+UI_POP_AW =     Ui(stk_sel=STK_WST, stk_op=STK_POP, stk_sz=STK_SZ_16, reg_al_wr=True, reg_ah_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_H)
+UI_POP_AS =     Ui(stk_sel=STK_WST, stk_op=STK_POP, stk_sz=STK_SZ_S, reg_al_wr=True, reg_ah_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_H)
+UI_POP_B_U8 =   Ui(stk_sel=STK_WST, stk_op=STK_POP, stk_sz=STK_SZ_8L, reg_bl_wr=True, reg_bh_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_ZERO)
+UI_POP_BS =     Ui(stk_sel=STK_WST, stk_op=STK_POP, stk_sz=STK_SZ_S, reg_bl_wr=True, reg_bh_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_H)
+UI_POP_CS =     Ui(stk_sel=STK_WST, stk_op=STK_POP, stk_sz=STK_SZ_S, reg_cl_wr=True, reg_ch_wr=True, reg_in_sel=REG_IN_WST, reg_h_mode=REG_H_H)
 
-UI_PUSH_AS =    Ui(wst_op=STK_PUSH, wst_in_sel=STK_IN_REG_A, wst_sz=STK_SZ_S)
-UI_PUSH_AW =    Ui(wst_op=STK_PUSH, wst_in_sel=STK_IN_REG_A, wst_sz=STK_SZ_16)
-UI_PUSH_BS =    Ui(wst_op=STK_PUSH, wst_in_sel=STK_IN_REG_B, wst_sz=STK_SZ_S)
-UI_PUSH_CS =    Ui(wst_op=STK_PUSH, wst_in_sel=STK_IN_REG_C, wst_sz=STK_SZ_S)
+UI_PUSH_AS =    Ui(stk_sel=STK_WST, stk_op=STK_PUSH, stk_in_sel=STK_IN_REG_A, stk_sz=STK_SZ_S)
+UI_PUSH_AW =    Ui(stk_sel=STK_WST, stk_op=STK_PUSH, stk_in_sel=STK_IN_REG_A, stk_sz=STK_SZ_16)
+UI_PUSH_BS =    Ui(stk_sel=STK_WST, stk_op=STK_PUSH, stk_in_sel=STK_IN_REG_B, stk_sz=STK_SZ_S)
+UI_PUSH_CS =    Ui(stk_sel=STK_WST, stk_op=STK_PUSH, stk_in_sel=STK_IN_REG_C, stk_sz=STK_SZ_S)
 
-UI_PUSH_ALU_L = Ui(wst_op=STK_PUSH, wst_in_sel=STK_IN_ALU_RES, wst_sz=STK_SZ_8L)
-UI_PUSH_ALU_S = Ui(wst_op=STK_PUSH, wst_in_sel=STK_IN_ALU_RES, wst_sz=STK_SZ_S)
+UI_PUSH_ALU_L = Ui(stk_sel=STK_WST, stk_op=STK_PUSH, stk_in_sel=STK_IN_ALU_RES, stk_sz=STK_SZ_8L)
+UI_PUSH_ALU_S = Ui(stk_sel=STK_WST, stk_op=STK_PUSH, stk_in_sel=STK_IN_ALU_RES, stk_sz=STK_SZ_S)
 
-UI_RPUSH_AS = Ui(rst_op=STK_PUSH, rst_in_sel=STK_IN_REG_A, rst_sz=STK_SZ_S)
+UI_RPUSH_AS =   Ui(stk_sel=STK_RST, stk_op=STK_PUSH, stk_in_sel=STK_IN_REG_A, stk_sz=STK_SZ_S)
 
-UI_RPUSH_PC_W = Ui(rst_op=STK_PUSH, rst_in_sel=STK_IN_PC, rst_sz=STK_SZ_16)
+UI_RPUSH_PC_W = Ui(stk_sel=STK_RST, stk_op=STK_PUSH, stk_in_sel=STK_IN_PC, stk_sz=STK_SZ_16)
 
 def UI_ALU(alu_op): return Ui(alu_op=alu_op, alu_sel0=ALU_SEL0_A, alu_sel1=ALU_SEL1_B)
 
@@ -212,6 +208,7 @@ UI_ALU_PC_PLUS_A = Ui(alu_op=ALU_OP_ADD, alu_sel0=ALU_SEL0_A, alu_sel1=ALU_SEL1_
 
 
 OP_ZZ_STKTRAP = -1
+OP_ZZ_UNIMPL = -2
 
 
 # Replace ALU_OP_([A-Z0-9_]+) = .+
@@ -264,7 +261,7 @@ pc_op_str = {
     PC_INCR: "INCR",
     PC_WARP_ALU: "->ALU",
     PC_WARP_ALU_IF_BL_NONZERO: "->ALU<br>if BL != 0",
-    PC_WARP_DVEC_S: "->DVEC.s",
+    PC_WARP_UVEC: "->UVEC",
 }
 
 reg_in_sel_str = {
@@ -272,6 +269,12 @@ reg_in_sel_str = {
     REG_IN_WST: "WST",
     REG_IN_MEM: "MEM",
     REG_IN_ALU: "ALU",
+}
+
+stk_sel_str = {
+    STK_NEITHER: "--",
+    STK_WST: "WST",
+    STK_RST: "RST",
 }
 
 stk_in_str = {

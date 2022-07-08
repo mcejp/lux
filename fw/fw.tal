@@ -1,4 +1,28 @@
 |ff80
 
-~div8_body.tal
-~div16_body.tal
+( unimpl handler )
+( entered with PC+1 on RST )
+
+STH2kr #0001 SUB2 LDA       ( fetch failed opcode )
+
+DUP #1b EQU ,&div8 JCN      ( test for DIV )
+DUP #3b EQU ,&div16 JCN     ( test for DIV2 )
+POP BRK                     ( else )
+
+&div8 POP
+
+                ( Dlow ; Nlow | )
+    STH STH     (             | Nlow ; Dlow )
+    #00 STHr    ( 00 Dlow     | Nlow )
+    #00 STHr    ( D ; 00 Nlow | )
+    ,&div16body JSR        ( Qhi Qlow    | )
+    NIP         ( Qlow        | )
+JMP2r
+
+
+&div16
+    POP
+    &div16body
+    ~div16_body.tal
+
+JMP2r
