@@ -85,7 +85,11 @@
     push-bs
 )
 
-; TODO: map DIV* to UNIMPL ("alias" directive?)
+; TODO: DRY
+(opcode 'DIV :s-mode 'auto
+    rpush-pc-w
+    warp-uvec
+)
 
 (opcode 'DUP :s-mode 'auto
     pop-as

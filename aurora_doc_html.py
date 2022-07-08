@@ -7,23 +7,24 @@ from uxn_isa import opcode_to_mnemonic, OMODE_S
 
 rows = []
 
-for opcode, (start, length) in sorted(UCODE_LUT.items()):
-    uprog = UCODE_ROM[start:start + length]
-
+for opcode, (uaddr, _) in sorted(UCODE_LUT.items()):
     if (opcode & 0x9f) == 0x00:
         # where BRK would be in the LUT, we have LIT (FIXME?)
         opcode ^= 0x80
 
     if opcode == OP_ZZ_STKTRAP:
         mnemonic = ".STKTRAP"
+    elif opcode == OP_ZZ_UNIMPL:
+        mnemonic = ".UNIMPL"
     else:
         mnemonic = opcode_to_mnemonic(opcode)
 
-    heading = [f"{opcode:02X}h&ensp;{mnemonic}", "ALU", "Mem", "PC", "Reg", "Work stack", "Ret stack", "Stall"]
+    heading = [f"{opcode:02X}h&ensp;{mnemonic}", "ALU", "Mem", "PC", "Reg", "Stack", "Stall"]
     rows.append(heading)
 
-    for i, uins in enumerate(uprog):
-        row = [str(i)]
+    while True:
+        uins = UCODE_ROM[uaddr]
+        row = [f"{uaddr:03X}h"]
 
         # ALU
         if uins.alu_op != ALU_OP_X:
@@ -67,7 +68,7 @@ for opcode, (start, length) in sorted(UCODE_LUT.items()):
                 REG_H_SIGN:     "sign(" + reg_in_sel_str[uins.reg_in_sel] + ")",
                 REG_H_ALU_H:    "ALU_H",
                 REG_H_H:        "high(" + reg_in_sel_str[uins.reg_in_sel] + ")" + (
-                    " = 0" if uins.reg_in_sel == REG_IN_WST and uins.wst_sz == STK_SZ_S and (opcode & OMODE_S) == 0 else ""),
+                    " = 0" if uins.reg_in_sel == REG_IN_WST and uins.stk_sz == STK_SZ_S and (opcode & OMODE_S) == 0 else ""),
             }
             rh += ["<=", what[uins.reg_h_mode]]
 
@@ -77,29 +78,28 @@ for opcode, (start, length) in sorted(UCODE_LUT.items()):
         # row.append("&ensp;&bull;&ensp;".join(rw))
         row.append("<br>".join(rw))
 
-        for op, in_sel, sz in ((uins.wst_op, uins.wst_in_sel, uins.wst_sz),
-                               (uins.rst_op, uins.rst_in_sel, uins.rst_sz)):
-            if op == STK_PUSH:
-                in_ = stk_in_str[in_sel]
-                sz_str = {
-                    STK_SZ_8L: ".8 lo(" + in_ + ")",
-                    STK_SZ_8H: ".8 hi(" + in_ + ")",
-                    STK_SZ_16: ".16 " + in_,
-                    STK_SZ_S: ".s " + in_,
-                }
-                row.append("push" + sz_str[sz])
-            elif op == STK_POP:
-                sz_str = {
-                    STK_SZ_8L: ".8",
-                    STK_SZ_8H: ".8",
-                    STK_SZ_16: ".16",
-                    STK_SZ_S: ".s",
-                }
+        # Stack
+        if uins.stk_op == STK_PUSH:
+            in_ = stk_in_str[uins.stk_in_sel]
+            sz_str = {
+                STK_SZ_8L: ".8 lo(" + in_ + ")",
+                STK_SZ_8H: ".8 hi(" + in_ + ")",
+                STK_SZ_16: ".16 " + in_,
+                STK_SZ_S: ".s " + in_,
+            }
+            row.append(stk_sel_str[uins.stk_sel] + " push" + sz_str[uins.stk_sz])
+        elif uins.stk_op == STK_POP:
+            sz_str = {
+                STK_SZ_8L: ".8",
+                STK_SZ_8H: ".8",
+                STK_SZ_16: ".16",
+                STK_SZ_S: ".s",
+            }
 
-                row.append("pop" + sz_str[sz])
-            else:
-                assert op == STK_NOP
-                row.append("")
+            row.append(stk_sel_str[uins.stk_sel] + " pop" + sz_str[uins.stk_sz])
+        else:
+            assert uins.stk_op == STK_NOP
+            row.append("")
 
         if uins.reg_in_sel == REG_IN_MEM:
             row.append("memory-load")
@@ -107,6 +107,11 @@ for opcode, (start, length) in sorted(UCODE_LUT.items()):
             row.append("")
 
         rows.append(row)
+
+        if uins.last:
+            break
+        else:
+            uaddr += 1
 
     rows.append([])
 
@@ -119,10 +124,10 @@ with open("ucode_au20.html", "wt") as f:
     for row in rows:
         f.write("<tr>")
         for cell in row:
-            if len(row[0]) > 2:
-                f.write('<th style="">' + cell + "</th>")
+            if len(row[0]) > 4:     # terrible terrible
+                f.write('<th>' + cell + "</th>")
             else:
-                f.write('<td style="">' + cell + "</td>")
+                f.write('<td>' + cell + "</td>")
         # if not row:
         #     f.write("<td colspan=\"8\">&nbsp;</td>")
         f.write("</tr>\n")

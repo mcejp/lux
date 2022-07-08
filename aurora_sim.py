@@ -180,10 +180,7 @@ class Sequencer(Module):
                     print()
                     sys.exit()
 
-                if opcode in {OP_DIV, OP_DIV|OMODE_S}:
-                    lut_key = OP_ZZ_UNIMPL
-                else:
-                    lut_key = opcode & ~(OMODE_R | OMODE_k)
+                lut_key = opcode & ~(OMODE_R | OMODE_k)
 
                 try:
                     start, length = UCODE_LUT[lut_key]

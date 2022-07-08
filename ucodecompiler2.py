@@ -61,7 +61,7 @@ def process_opcode(ucode_rom, ucode_lut, mnemonic, *uprog_model, opcode_expr=Non
     def define_uprog(masked_opcode_str, uprog):
         start = len(ucode_rom)
         ucode_rom.extend(uprog)
-        ucode_lut[masked_opcode_str] = f"({start}, {len(uprog)})"
+        ucode_lut[masked_opcode_str] = f"({start:3}, {len(uprog):2})"
 
 
     if mnemonic.endswith("2"):
@@ -120,6 +120,6 @@ UCODE_ROM = [\n""")
     out.write("UCODE_LUT = {\n")
 
     for k, v in ucode_lut.items():
-        out.write(f"    {k}: {v},\n")
+        out.write(f"    {k + ':':28s}{v},\n")
 
     out.write("}\n")
