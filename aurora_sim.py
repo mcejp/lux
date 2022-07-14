@@ -212,6 +212,7 @@ class Sequencer(Module):
             if stk_trap_i:
                 # TODO: save stack id & error number
 
+                T("stack trap")
                 next.ucode_addr = UCODE_LUT[OP_ZZ_STKTRAP][0]
             elif mem_stall:
                 T("-- memory stall")
@@ -449,12 +450,12 @@ class Stack(Module):
                 next.wpos = self.wpos + 2
         elif en and op == STK_POP and self.rpos - eff_sz >= 0:
             if eff_sz == 1:
-                T(f"POP {self._name} => {self.top(en, sz, s):02X}h")
+                T(f"POP {self._name} => {self.top(en, sz, s):02X}h          (new pos = {self.rpos - 1})")
 
                 # assert self.rpos - 1 >= 0
                 next.rpos = self.rpos - 1
             else:
-                T(f"POP {self._name} => {self.top(en, sz, s):04X}h")
+                T(f"POP {self._name} => {self.top(en, sz, s):04X}h          (new pos = {self.rpos - 2})")
 
                 # assert self.rpos - 2 >= 0
                 next.rpos = self.rpos - 2
