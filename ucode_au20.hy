@@ -317,7 +317,7 @@
 
 (opcode 'SWP :s-mode 'auto
     pop-as
-    pop-bs
+    pop-bs          ; would benefit from a simultaneous-pop-and-push uop
     push-as
     push-bs
 )

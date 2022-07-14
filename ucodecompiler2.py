@@ -2,11 +2,14 @@
 
 import functools
 import io
+from pathlib import Path
 import sys
+from typing import List, Optional
 
 import hy
 
 import aurora
+from ucode_tools import iterate_uprogs
 
 
 S = hy.models.Symbol
@@ -61,7 +64,7 @@ def process_opcode(ucode_rom, ucode_lut, mnemonic, *uprog_model, opcode_expr=Non
     def define_uprog(masked_opcode_str, uprog):
         start = len(ucode_rom)
         ucode_rom.extend(uprog)
-        ucode_lut[masked_opcode_str] = f"({start:3}, {len(uprog):2})"
+        ucode_lut[masked_opcode_str] = (start, len(uprog))
 
 
     if mnemonic.endswith("2"):
@@ -102,6 +105,97 @@ with open(sys.argv[1], "rt") as f:
 
     hy.eval(hycode, locals=localz)
 
+"""
+ucode generated; now compress it
+
+- iterate over uprogs
+- (it is each uprog's own responsibility to be properly terminated)
+- insert into suffix tree & make LUT point to head
+"""
+
+from dataclasses import dataclass, field
+
+@dataclass
+class SuffixTreeNode:
+    suffix: Optional["SuffixTreeNode"]
+    prefixes: List["SuffixTreeNode"] = field(default_factory=dict)
+
+    def get_or_insert_prefix(self, uins: aurora.AuroraUins) -> "SuffixTreeNode":
+        if uins not in self.prefixes:
+            self.prefixes[uins] = SuffixTreeNode(suffix=self)
+
+        return self.prefixes[uins]
+
+
+root = SuffixTreeNode(suffix=None)
+
+new_lut = {}
+
+for opcode, uprog in iterate_uprogs(ucode_lut, ucode_rom):
+    head = root
+
+    for uaddr, uins in reversed(list(uprog)):
+        head = head.get_or_insert_prefix(uins)
+
+    new_lut[opcode] = head
+
+
+def visualize(root):
+    import graphviz
+
+    dot = graphviz.Digraph('ucode',
+                        graph_attr={'rankdir': 'LR', 'ranksep': '0', 'nodesep': '0.05'},
+                        node_attr={'fontname': 'Cascadia Code', 'shape': 'plaintext'}
+                        )
+    sub = graphviz.Digraph(graph_attr={"rank": "same"})
+    term = graphviz.Digraph(graph_attr={"rank": "same"})
+
+    id_next = [0]
+
+    def make_id():
+        id = str(id_next[0])
+        id_next[0] += 1
+        return id
+
+    def makeit(head, uins):
+        id = make_id()
+
+        title = uins.replace(" | Ui(last=True)", "")\
+            .replace("UI_", "")\
+            .replace("Ui(", "")\
+            .replace(")", "")\
+            .replace(",", "|")
+
+        if id != "0":
+            dest = term if head.suffix is root else dot
+            dest.node(id, title, shape="record" if title else "point")
+
+        for uins, prefix in head.prefixes.items():
+            newid = makeit(prefix, uins)
+            if id != "0":
+                dot.edge(newid, id)
+
+        for lut_key, opcode_head in new_lut.items():
+            if opcode_head is head:
+                newid = make_id()
+
+                sub.node(newid, lut_key, rank="min", shape="cds", color="white", style="filled", fillcolor="lightgrey")
+                dot.edge(newid, id)
+
+        return id
+
+    makeit(root, "")
+
+    dot.subgraph(sub)
+    dot.subgraph(term)
+
+    # https://dreampuf.github.io/GraphvizOnline/
+    with open(Path(sys.argv[1]).with_suffix(".dot"), "wt") as dotf:
+        dotf.write(dot.source)
+
+
+visualize(root)
+
 
 with open(sys.argv[2], "wt") as out:
     out.write("""# GENERATED CODE, DO NOT EDIT BY HAND
@@ -119,7 +213,7 @@ UCODE_ROM = [\n""")
 
     out.write("UCODE_LUT = {\n")
 
-    for k, v in ucode_lut.items():
-        out.write(f"    {k + ':':28s}{v},\n")
+    for k, (start, length) in ucode_lut.items():
+        out.write(f"    {k + ':':28s}({start:3}, {length:2}),\n")
 
     out.write("}\n")

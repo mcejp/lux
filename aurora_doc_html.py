@@ -2,28 +2,29 @@
 
 from aurora import *
 from ucode_au20 import UCODE_LUT, UCODE_ROM
+from ucode_tools import iterate_uprogs
 
 from uxn_isa import opcode_to_mnemonic, OMODE_S
 
 rows = []
 
-for opcode, (uaddr, _) in sorted(UCODE_LUT.items()):
+for opcode, uprog in iterate_uprogs(UCODE_LUT, UCODE_ROM):
     if (opcode & 0x9f) == 0x00:
         # where BRK would be in the LUT, we have LIT (FIXME?)
         opcode ^= 0x80
 
     if opcode == OP_ZZ_STKTRAP:
-        mnemonic = ".STKTRAP"
+        title = ".STKTRAP"
     elif opcode == OP_ZZ_UNIMPL:
-        mnemonic = ".UNIMPL"
+        title = ".UNIMPL"
     else:
         mnemonic = opcode_to_mnemonic(opcode)
+        title = f"{opcode:02X}h&ensp;{mnemonic}"
 
-    heading = [f"{opcode:02X}h&ensp;{mnemonic}", "ALU", "Mem", "PC", "Reg", "Stack", "Stall"]
+    heading = [title, "ALU", "Mem", "PC", "Reg", "Stack", "Stall"]
     rows.append(heading)
 
-    while True:
-        uins = UCODE_ROM[uaddr]
+    for uaddr, uins in uprog:
         row = [f"{uaddr:03X}h"]
 
         # ALU
@@ -107,11 +108,6 @@ for opcode, (uaddr, _) in sorted(UCODE_LUT.items()):
             row.append("")
 
         rows.append(row)
-
-        if uins.last:
-            break
-        else:
-            uaddr += 1
 
     rows.append([])
 
